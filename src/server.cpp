@@ -1,6 +1,6 @@
 #include <arpa/inet.h>
 #include <unistd.h>
-
+#include <fcntl.h>
 #include <cassert>
 #include <cerrno>
 #include <cstdio>
@@ -27,6 +27,23 @@ struct Conn {
     size_t wbuf_sent = 0;
     uint8_t wbuf[4 + k_max_msg];
 };
+
+
+static void fd_set_nb(int fd) {
+    errno = 0;
+    int flags = fcntl(fd, F_GETFL, 0);
+    if(errno) {
+        perror("fcntl");
+        return;
+    }
+
+    flags |= O_NONBLOCK;
+    errno = 0;
+    fcntl(fd, F_SETFL, flags);
+    if(errno) {
+        perror("fcntl");
+    }
+}
 
 // ------------------------------------------------------------
 // Reads EXACTLY n bytes from the socket.
@@ -196,6 +213,7 @@ int main() {
         perror("listen");
         return 1;
     }
+    fd_set_nb(fd);
 
     printf("Server listening on port 1234...\n");
 
