@@ -9,6 +9,24 @@
 
 // Maximum message size we'll accept
 const size_t k_max_msg = 4096;
+enum {
+    STATE_REQ = 0,
+    STATE_RES = 1,
+    STATE_END = 2,
+};
+
+struct Conn {
+    int fd = -1;
+
+    uint32_t state = STATE_REQ;
+
+    size_t rbuf_size = 0;
+    uint8_t rbuf[4 + k_max_msg];
+
+    size_t wbuf_size = 0;
+    size_t wbuf_sent = 0;
+    uint8_t wbuf[4 + k_max_msg];
+};
 
 // ------------------------------------------------------------
 // Reads EXACTLY n bytes from the socket.
