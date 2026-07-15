@@ -6,6 +6,8 @@
 #include <cstdio>
 #include <cstring>
 #include <cstdint>
+#include <poll.h>
+#include <vector>
 
 // Maximum message size we'll accept
 const size_t k_max_msg = 4096;
@@ -27,6 +29,8 @@ struct Conn {
     size_t wbuf_sent = 0;
     uint8_t wbuf[4 + k_max_msg];
 };
+
+static std::vector<Conn *> fd2conn;
 
 
 static void fd_set_nb(int fd) {
@@ -173,6 +177,39 @@ static int32_t one_request(int connfd) {
     // Send reply
     return write_all(connfd, wbuf, 4 + len);
 }
+static void connection_io(Conn *conn) {
+
+}
+static void accept_new_conn(int fd) {
+
+    sockaddr_in client_addr{};
+    socklen_t socklen = sizeof(client_addr);
+
+    int connfd = accept(fd, (sockaddr *)&client_addr, &socklen);
+
+    if (connfd < 0) {
+        return;
+    }
+
+    // Make the client socket nonblocking too
+    fd_set_nb(connfd);
+
+    // Create a new connection object
+    Conn *conn = new Conn();
+
+    conn->fd = connfd;
+
+    // Make sure vector is large enough
+    if (fd2conn.size() <= (size_t)connfd) {
+        fd2conn.resize(connfd + 1);
+    }
+
+    // Store connection using fd as index
+    fd2conn[connfd] = conn;
+
+    printf("New client connected! fd = %d\n", connfd);
+}
+
 
 int main() {
 
@@ -220,37 +257,42 @@ int main() {
     // Server runs forever
     while (true) {
 
-        sockaddr_in client_addr{};
-        socklen_t socklen = sizeof(client_addr);
+    std::vector<pollfd> poll_args;
 
-        // Wait for client
-        int connfd = accept(fd,
-                            (sockaddr*)&client_addr,
-                            &socklen);
+    // Listening socket
+    pollfd pfd{};
+    pfd.fd = fd;
+    pfd.events = POLLIN;
+    pfd.revents = 0;
 
-        if (connfd < 0) {
+    poll_args.push_back(pfd);
+
+    // Existing client connections
+    for (Conn *conn : fd2conn) {
+
+        if (!conn)
             continue;
-        }
 
-        printf("Client connected\n");
+        pollfd pfd{};
+        pfd.fd = conn->fd;
+        pfd.events = POLLIN;
+        pfd.revents = 0;
 
-        // ----------------------------------------
-        // Keep serving SAME client
-        // until client disconnects
-        // ----------------------------------------
-        while (true) {
-
-            int32_t err = one_request(connfd);
-
-            if (err) {
-                break;
-            }
-        }
-
-        printf("Client disconnected\n");
-
-        close(connfd);
+        poll_args.push_back(pfd);
     }
+
+    int rv = poll(poll_args.data(),
+                  poll_args.size(),
+                  -1);
+
+    if (rv < 0) {
+        perror("poll");
+        continue;
+    }
+
+    printf("Something became ready!\n");
+}
+
 
     close(fd);
 
